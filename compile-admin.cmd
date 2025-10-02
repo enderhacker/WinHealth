@@ -18,8 +18,25 @@ if exist "dist" rmdir /s /q "dist"
 if exist "%BASENAME%.spec" del /q "%BASENAME%.spec"
 
 echo Compiling %SCRIPT%...
+pyinstaller --onefile --noconsole --clean --icon=icon.ico ^
+--hidden-import=asyncio ^
+--hidden-import=threading ^
+--hidden-import=socket ^
+--hidden-import=json ^
+--hidden-import=os ^
+--hidden-import=base64 ^
+--hidden-import=pyautogui ^
+--hidden-import=tempfile ^
+--hidden-import=subprocess ^
+--hidden-import=getpass ^
+--hidden-import=ctypes ^
+--hidden-import=platform ^
+--hidden-import=tkinter ^
+--hidden-import=tkinter.ttk ^
+--hidden-import=tkinter.scrolledtext ^
+--hidden-import=tkinter.filedialog ^
+"%SCRIPT%"
 
-pyinstaller --onefile --noconsole --clean --icon=icon.ico "%SCRIPT%"
 
 if exist "dist\%BASENAME%.exe" (
     move /y "dist\%BASENAME%.exe" "%OUTFOLDER%\%EXE%"
