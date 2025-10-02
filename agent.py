@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agent_server.py (Fixed and Optimized)
+agent.py (Fixed and Optimized)
 Agent para LAN que:
  - Emite broadcast UDP periódicos con host/port.
  - Escucha conexiones TCP en TCP_PORT.
@@ -18,15 +18,16 @@ import asyncio
 import socket
 import os
 import json
+import base64
 import tempfile
 import subprocess
 import getpass
 import threading
 
-TCP_PORT = 50000
-UDP_BROADCAST_PORT = 50001
+TCP_PORT = 56700
+UDP_BROADCAST_PORT = 56701
 BROADCAST_INTERVAL = 5
-SHARED_TOKEN = "mi-token-secreto-123"  # Cambia esto
+SHARED_TOKEN = "gmhMWfvT0P4RPKgrpYMtYBViXPg8.Tj57Gf0UQJzDlqOQGa0pO5o-Ptj9tYGUFZlQGRuHsX4g4O0Gj8Mjç+O2BKiF3KXZwzKXdRy2rHd€@9zJwGEyOiO2yGP51KoKdDHIOfSCE"
 
 HOSTNAME = socket.gethostname()
 
@@ -56,24 +57,28 @@ def do_popup_windows(text, title="Aviso", type_="info"):
         icon_type = type_map.get(type_.lower(), "Information")
 
         # Crear script de PowerShell
-        ps_script = f'''
+        ps_script = f"""
 Add-Type -AssemblyName PresentationFramework
 [System.Windows.MessageBox]::Show("{safe_text}", "{safe_title}", "OK", "{icon_type}")
-'''
+"""
 
         # Guardar script temporal
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".ps1", mode="w", encoding="utf-8")
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False, suffix=".ps1", mode="w", encoding="utf-8"
+        )
         tmp.write(ps_script)
         tmp.close()
 
         # Lanzar sin consola
         subprocess.Popen(
             ["powershell", "-ExecutionPolicy", "Bypass", "-File", tmp.name],
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
         # Borrar el archivo después de 15 segundos
-        threading.Timer(15, lambda: os.unlink(tmp.name) if os.path.exists(tmp.name) else None).start()
+        threading.Timer(
+            15, lambda: os.unlink(tmp.name) if os.path.exists(tmp.name) else None
+        ).start()
         return True, "Popup lanzado correctamente"
     except Exception as e:
         try:
@@ -180,6 +185,42 @@ async def handle_command(payload):
             "msg": "info",
             "data": {"host": HOSTNAME, "user": getpass.getuser(), "cwd": os.getcwd()},
         }
+
+    elif cmd == "listdir":
+        path = args.get("path", "C:\\")
+        try:
+            entries = []
+            for f in os.listdir(path):
+                full = os.path.join(path, f)
+                entries.append({"name": f, "is_dir": os.path.isdir(full)})
+            return {"ok": True, "entries": entries}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)}
+
+    elif cmd == "getfile":
+        path = args.get("path")
+        if not path or not os.path.isfile(path):
+            return {"ok": False, "msg": "Archivo no encontrado"}
+        try:
+            with open(path, "rb") as f:
+                data = base64.b64encode(f.read()).decode()
+            return {"ok": True, "data": data}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)}
+
+    elif cmd == "putfile":
+        path = args.get("path")
+        data = args.get("data")
+        if not path or data is None:
+            return {"ok": False, "msg": "Parámetros inválidos"}
+        try:
+            raw = base64.b64decode(data.encode())
+            with open(path, "wb") as f:
+                f.write(raw)
+            return {"ok": True, "msg": "Archivo guardado correctamente"}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)}
+
     else:
         return {"ok": False, "msg": "Comando desconocido"}
 

@@ -8,6 +8,7 @@ from urllib.error import HTTPError
 import winreg
 import shutil
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -171,7 +172,7 @@ class InstallerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("WinHealth Installer")
-        self.root.geometry("450x220")
+        self.root.geometry("450x150")
         self.root.resizable(False, False)
 
         # Initial question
@@ -232,12 +233,20 @@ class InstallerApp:
         self.progress["maximum"] = len(steps)
 
         for i, (msg, func) in enumerate(steps, start=1):
+            start_time = time.time()
             self.update_status(msg, i - 1)
             ok = func()
+            elapsed = time.time() - start_time
+
+            # Ensure each step takes at least 0.2 seconds
+            if elapsed < 0.2:
+                time.sleep(0.2 - elapsed)
+
             if not ok:
                 messagebox.showerror("Error", f"Ocurrió un error en: {msg}")
                 self.show_close_button()
                 return
+
             self.update_status(f"{msg} OK", i)
 
         # Finished

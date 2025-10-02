@@ -1,6 +1,6 @@
 #!/usr.bin/env python3
 """
-admin_tk.py (Fixed and Optimized)
+admin.py (Fixed and Optimized)
 Interfaz Tkinter en español:
  - Lista nodos descubiertos vía broadcast UDP.
  - Vista detalle con botones: Abrir Shell, Enviar Popup, Abrir X (ejemplo), Desconectar.
@@ -11,10 +11,12 @@ Interfaz Tkinter en español:
 import tkinter as tk
 from tkinter import messagebox, simpledialog, scrolledtext, ttk
 import threading, socket, json, time
+import os
+import base64
 
-TCP_PORT = 50000
-UDP_BROADCAST_PORT = 50001
-SHARED_TOKEN = "mi-token-secreto-123"  # Debe coincidir con agent
+TCP_PORT = 56700
+UDP_BROADCAST_PORT = 56701
+SHARED_TOKEN = "gmhMWfvT0P4RPKgrpYMtYBViXPg8.Tj57Gf0UQJzDlqOQGa0pO5o-Ptj9tYGUFZlQGRuHsX4g4O0Gj8Mjç+O2BKiF3KXZwzKXdRy2rHd€@9zJwGEyOiO2yGP51KoKdDHIOfSCE"
 
 agents = {}  # ip -> info
 
@@ -80,6 +82,10 @@ class AdminApp:
         self.btn_popup.pack(side="left", padx=6)
         self.btn_openx = tk.Button(btns, text="Abrir X", command=self.send_openx)
         self.btn_openx.pack(side="left", padx=6)
+        self.btn_transfer = tk.Button(
+            btns, text="Transferencias de archivos", command=self.open_file_transfer
+        )
+        self.btn_transfer.pack(side="left", padx=6)
         tk.Button(
             self.frame_detalle, text="Desconectar / Volver", command=self.back_to_list
         ).pack(pady=12)
@@ -156,7 +162,10 @@ class AdminApp:
             if not text:
                 messagebox.showwarning("Atención", "El mensaje no puede estar vacío.")
                 return
-            payload = {"cmd": "popup", "args": {"text": text, "title": title, "type": type_}}
+            payload = {
+                "cmd": "popup",
+                "args": {"text": text, "title": title, "type": type_},
+            }
             res = self.send_cmd(self.current_agent_ip, payload)
             if res.get("ok"):
                 messagebox.showinfo("Éxito", res.get("msg", "Popup enviado"))
@@ -170,22 +179,24 @@ class AdminApp:
         popup_win.transient()  # opcional
         popup_win.grab_set()  # solo para enfocar dialog
 
-        tk.Label(popup_win, text="Tipo:").pack(anchor="w", padx=10, pady=(10,0))
-        type_combo = ttk.Combobox(popup_win, values=["info", "warning", "error"], state="readonly")
+        tk.Label(popup_win, text="Tipo:").pack(anchor="w", padx=10, pady=(10, 0))
+        type_combo = ttk.Combobox(
+            popup_win, values=["info", "warning", "error"], state="readonly"
+        )
         type_combo.current(0)
         type_combo.pack(fill="x", padx=10)
 
-        tk.Label(popup_win, text="Título:").pack(anchor="w", padx=10, pady=(10,0))
+        tk.Label(popup_win, text="Título:").pack(anchor="w", padx=10, pady=(10, 0))
         title_entry = tk.Entry(popup_win)
         title_entry.insert(0, "Aviso")
         title_entry.pack(fill="x", padx=10)
 
-        tk.Label(popup_win, text="Mensaje:").pack(anchor="w", padx=10, pady=(10,0))
+        tk.Label(popup_win, text="Mensaje:").pack(anchor="w", padx=10, pady=(10, 0))
         txt = tk.Text(popup_win, height=5)
         txt.insert("1.0", "Hola desde Admin")
-        txt.pack(fill="both", expand=True, padx=10, pady=(0,10))
+        txt.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-        send_btn = tk.Button(popup_win, text="Enviar", command=on_send)
+        send_btn = tk.Button(popup_win, text="Enviar", command=on_send, padx=12, pady=6)
         send_btn.pack(pady=5)
 
     def send_openx(self):
@@ -204,6 +215,72 @@ class AdminApp:
         else:
             messagebox.showerror("Error", res.get("msg", "Fallo al ejecutar openx"))
 
+    def populate_local_tree(self, tree, path):
+        tree.delete(*tree.get_children())
+        for f in os.listdir(path):
+            full = os.path.join(path, f)
+            is_dir = os.path.isdir(full)
+            tree.insert("", "end", text=f, values=(full,), open=False)
+
+    def populate_remote_tree(self, tree, path, ip):
+        tree.delete(*tree.get_children())
+        payload = {"cmd": "listdir", "args": {"path": path}}
+        res = self.send_cmd(ip, payload)
+        if res.get("ok"):
+            for entry in res["entries"]:
+                tree.insert(
+                    "",
+                    "end",
+                    text=entry["name"],
+                    values=(os.path.join(path, entry["name"]),),
+                    open=False,
+                )
+
+    def open_file_transfer(self):
+        if not self.current_agent_ip:
+            messagebox.showwarning("Atención", "No hay un nodo seleccionado.")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Transferencias de archivos")
+        win.geometry("800x400")
+
+        # Frames
+        local_frame = tk.Frame(win)
+        remote_frame = tk.Frame(win)
+        local_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        remote_frame.pack(side="right", fill="both", expand=True, padx=5, pady=5)
+
+        tk.Label(local_frame, text="PC Local").pack()
+        tk.Label(remote_frame, text="Agente Remoto").pack()
+
+        # Local tree
+        local_tree = ttk.Treeview(local_frame)
+        local_tree.pack(fill="both", expand=True)
+        self.populate_local_tree(local_tree, "C:\\")
+
+        # Remote tree
+        remote_tree = ttk.Treeview(remote_frame)
+        remote_tree.pack(fill="both", expand=True)
+        self.populate_remote_tree(remote_tree, "C:\\", self.current_agent_ip)
+
+        # Drag & drop: double click to send from local -> remote
+        def send_to_remote(event):
+            item = local_tree.selection()[0]
+            path = local_tree.item(item, "values")[0]
+            if os.path.isfile(path):
+                with open(path, "rb") as f:
+                    data = f.read()
+                data_b64 = base64.b64encode(data).decode()
+                payload = {"cmd": "putfile", "args": {"path": path, "data": data_b64}}
+                res = self.send_cmd(self.current_agent_ip, payload)
+                if res.get("ok"):
+                    messagebox.showinfo("Éxito", f"Archivo {path} enviado al agente")
+                else:
+                    messagebox.showerror("Error", res.get("msg", "Fallo"))
+
+        local_tree.bind("<Double-1>", send_to_remote)
+
     # ----------------- Shell window -----------------
     def open_shell(self):
         if not self.current_agent_ip:
@@ -219,29 +296,42 @@ class ShellWindow:
         self.top.title(f"Shell remota - {ip}")
         self.top.geometry("720x480")
         self.txt = scrolledtext.ScrolledText(
-            self.top, font=("Consolas", 12), bg="black", fg="white", insertbackground="white", state="disabled"
+            self.top,
+            font=("Consolas", 12),
+            bg="black",
+            fg="white",
+            insertbackground="white",
+            state="disabled",
         )
         self.txt.pack(fill="both", expand=True)
-        self.entry = tk.Entry(self.top, font=("Consolas", 12), bg="#333", fg="white", insertbackground="white")
+        self.entry = tk.Entry(
+            self.top,
+            font=("Consolas", 12),
+            bg="#333",
+            fg="white",
+            insertbackground="white",
+        )
         self.entry.pack(fill="x")
         self.entry.bind("<Return>", self.send_command)
         self.entry.focus_set()
-        
+
         self.top.protocol("WM_DELETE_WINDOW", self.on_close)
         self._stop = threading.Event()
         self._conn_lock = threading.Lock()
         self._sock = None
-        
+
         self._thread = threading.Thread(target=self._connection_loop, daemon=True)
         self._thread.start()
 
     def log(self, text):
         try:
+
             def _append():
                 self.txt.configure(state="normal")
                 self.txt.insert(tk.END, text)
                 self.txt.see(tk.END)
                 self.txt.configure(state="disabled")
+
             self.top.after(0, _append)
         except Exception:
             pass
@@ -252,14 +342,14 @@ class ShellWindow:
             try:
                 self.log(f"\n\n[+] Conectando a {self.ip}:{TCP_PORT}...\n\n")
                 s = socket.create_connection((self.ip, TCP_PORT), timeout=8)
-                
+
                 # --- FIX: Remove the timeout for subsequent blocking operations ---
                 s.settimeout(None)
                 # ----------------------------------------------------------------
 
                 with self._conn_lock:
                     self._sock = s
-                
+
                 # Use a file-like object for easier line reading
                 s_file = s.makefile("rwb")
                 s_file.write((SHARED_TOKEN + "\n").encode())
@@ -268,7 +358,7 @@ class ShellWindow:
 
                 if resp != "AUTH_OK":
                     self.log("[-] Autenticación fallida.\n")
-                    break 
+                    break
 
                 s_file.write(b"SHELL\n")
                 s_file.flush()
@@ -280,7 +370,7 @@ class ShellWindow:
                         self.log("\n[*] Conexión cerrada por el host remoto.\n")
                         break
                     self.log(data.decode(errors="ignore"))
-            
+
             except socket.timeout:
                 self.log("[-] Timeout al establecer la conexión inicial.\n")
             except Exception as e:
@@ -308,10 +398,14 @@ class ShellWindow:
     def close_connection(self):
         with self._conn_lock:
             if self._sock:
-                try: self._sock.shutdown(socket.SHUT_RDWR)
-                except: pass
-                try: self._sock.close()
-                except: pass
+                try:
+                    self._sock.shutdown(socket.SHUT_RDWR)
+                except:
+                    pass
+                try:
+                    self._sock.close()
+                except:
+                    pass
                 self._sock = None
 
     def on_close(self):
