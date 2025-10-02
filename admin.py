@@ -40,56 +40,6 @@ def udp_listener():
             pass
 
 
-class RemoteWindow:
-    def __init__(self, root, ip):
-        self.ip = ip
-        self.top = tk.Toplevel(root)
-        self.top.title(f"Control Remoto - {ip}")
-        self.top.geometry("600x400")
-
-        tk.Button(self.top, text="Click Mouse", command=self.click_mouse).pack()
-        tk.Button(self.top, text="Enviar Tecla", command=self.send_key).pack()
-        tk.Button(self.top, text="Subir Archivo", command=self.upload_file).pack()
-        tk.Button(self.top, text="Descargar Archivo", command=self.download_file).pack()
-
-    def send_remote_cmd(self, payload):
-        app = AdminApp(self.top)
-        return app.send_cmd(self.ip, {"cmd": "remote_ctrl", "args": payload})
-
-    def click_mouse(self):
-        self.send_remote_cmd({"action": "mouse_click"})
-
-    def send_key(self):
-        key = simpledialog.askstring("Tecla", "Ingrese la tecla:")
-        if key:
-            self.send_remote_cmd({"action": "key", "key": key})
-
-    def upload_file(self):
-        path = tk.filedialog.askopenfilename()
-        if path:
-            with open(path, "rb") as f:
-                content = base64.b64encode(f.read()).decode()
-            remote_path = simpledialog.askstring(
-                "Ruta remota", "Dónde guardarlo en remoto?"
-            )
-            if remote_path:
-                self.send_remote_cmd(
-                    {"action": "upload_file", "path": remote_path, "content": content}
-                )
-
-    def download_file(self):
-        remote_path = simpledialog.askstring(
-            "Ruta remota", "Archivo remoto a descargar"
-        )
-        local_path = tk.filedialog.asksaveasfilename()
-        if remote_path and local_path:
-            res = self.send_remote_cmd({"action": "download_file", "path": remote_path})
-            if res.get("ok"):
-                with open(local_path, "wb") as f:
-                    f.write(base64.b64decode(res["data"]))
-                messagebox.showinfo("Éxito", "Archivo descargado")
-
-
 class AdminApp:
     def __init__(self, root):
         self.root = root
@@ -133,10 +83,6 @@ class AdminApp:
         self.btn_popup.pack(side="left", padx=6)
         self.btn_openx = tk.Button(btns, text="Abrir X", command=self.send_openx)
         self.btn_openx.pack(side="left", padx=6)
-        self.btn_remote = tk.Button(
-            btns, text="Control Remoto", command=self.open_remote_window
-        )
-        self.btn_remote.pack(side="left", padx=6)
         tk.Button(
             self.frame_detalle, text="Desconectar / Volver", command=self.back_to_list
         ).pack(pady=12)
@@ -177,12 +123,6 @@ class AdminApp:
         self.current_agent_info = None
         self.frame_detalle.pack_forget()
         self.frame_lista.pack(fill="both", expand=True)
-
-    def open_remote_window(self):
-        if not self.current_agent_ip:
-            messagebox.showwarning("Atención", "Selecciona un nodo primero")
-            return
-        RemoteWindow(self.root, self.current_agent_ip)
 
     # ----------------- CMD helpers -----------------
     def send_cmd(self, ip, payload, timeout=6):

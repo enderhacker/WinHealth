@@ -187,27 +187,6 @@ async def handle_command(payload):
             "data": {"host": HOSTNAME, "user": getpass.getuser(), "cwd": os.getcwd()},
         }
 
-    elif cmd == "remote_ctrl":
-        action = args.get("action")
-        if action == "mouse_move":
-            x, y = args.get("x"), args.get("y")
-            pyautogui.moveTo(x, y)
-        elif action == "mouse_click":
-            pyautogui.click()
-        elif action == "key":
-            pyautogui.press(args.get("key"))
-        elif action == "upload_file":
-            filepath = args.get("path")
-            content = args.get("content")  # base64 encoded
-            with open(filepath, "wb") as f:
-                f.write(base64.b64decode(content))
-        elif action == "download_file":
-            filepath = args.get("path")
-            with open(filepath, "rb") as f:
-                data = base64.b64encode(f.read()).decode()
-            return {"ok": True, "data": data}
-
-
     else:
         return {"ok": False, "msg": "Comando desconocido"}
 

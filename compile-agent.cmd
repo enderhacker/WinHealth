@@ -26,7 +26,6 @@ pyinstaller --onefile --noconsole --clean --icon=icon.ico ^
 --hidden-import=json ^
 --hidden-import=os ^
 --hidden-import=base64 ^
---hidden-import=pyautogui ^
 --hidden-import=tempfile ^
 --hidden-import=subprocess ^
 --hidden-import=getpass ^
