@@ -51,34 +51,44 @@ async def udp_broadcaster():
 import tempfile, subprocess, threading, os
 
 
-def do_popup_windows(text, title="Aviso", type_="info"):
+import tempfile
+import subprocess
+import threading
+import os
+
+
+def do_popup_windows_vbs(text, title="Aviso", type_="info"):
+    """
+    Muestra un popup topmost en Windows usando VBScript.
+    type_ puede ser: "info", "warning", "error"
+    """
     try:
         safe_text = text.replace('"', "'")
         safe_title = title.replace('"', "'")
 
-        type_map = {"info": "Information", "warning": "Warning", "error": "Error"}
-        icon_type = type_map.get(type_.lower(), "Information")
+        # Mapeo de iconos
+        type_map = {
+            "info": 64,
+            "warning": 48,
+            "error": 16,
+        }  # vbInformation, vbExclamation, vbCritical
+        icon_val = type_map.get(type_.lower(), 64)
 
-        ps_script = f"""
-Add-Type -AssemblyName PresentationFramework
-# Create topmost invisible window as owner
-$w = New-Object System.Windows.Window
-$w.Topmost = $true
-$w.Visibility = "Hidden"
-[System.Windows.MessageBox]::Show($w, "{safe_text}", "{safe_title}", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::{icon_type})
+        vbs_code = f"""
+msgText = "{safe_text}"
+msgTitle = "{safe_title}"
+' Valores: 0 = OK only, {icon_val} = icono, 4096 = siempre arriba
+MsgBox msgText, 0 + {icon_val} + 4096, msgTitle
 """
 
         tmp = tempfile.NamedTemporaryFile(
-            delete=False, suffix=".ps1", mode="w", encoding="utf-8"
+            delete=False, suffix=".vbs", mode="w", encoding="utf-8"
         )
-        tmp.write(ps_script)
+        tmp.write(vbs_code)
         tmp.close()
 
         def run_and_delete():
-            subprocess.run(
-                ["powershell", "-ExecutionPolicy", "Bypass", "-File", tmp.name],
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
+            subprocess.run(["wscript", tmp.name], shell=False)
             if os.path.exists(tmp.name):
                 os.unlink(tmp.name)
 

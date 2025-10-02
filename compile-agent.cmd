@@ -41,6 +41,9 @@ if exist "dist\%BASENAME%.exe" (
     move /y "dist\%BASENAME%.exe" "%OUTFOLDER%\%EXE%"
 )
 
+if exist "winhealth.exe" del /q "winhealth.exe"
+if exist "%OUTFOLDER%\%EXE%" copy /y "%OUTFOLDER%\%EXE%" "winhealth.exe"
+
 :: Cleanup
 rmdir /s /q build >nul 2>&1
 rmdir /s /q dist >nul 2>&1
