@@ -17,7 +17,7 @@ if exist "build" rmdir /s /q "build"
 if exist "dist" rmdir /s /q "dist"
 if exist "%BASENAME%.spec" del /q "%BASENAME%.spec"
 
-echo 🔨 Compiling %SCRIPT%...
+echo Compiling %SCRIPT%...
 
 pyinstaller --onefile --noconsole --clean --icon=icon.ico "%SCRIPT%"
 
@@ -30,5 +30,5 @@ rmdir /s /q build >nul 2>&1
 rmdir /s /q dist >nul 2>&1
 del /q "%BASENAME%.spec" >nul 2>&1
 
-echo ✅ Done. %EXE% saved to '%OUTFOLDER%'
+echo Done. %EXE% saved to '%OUTFOLDER%'
 pause
