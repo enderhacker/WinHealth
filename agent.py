@@ -48,27 +48,32 @@ async def udp_broadcaster():
 
 
 # ----------------- Helper: execute popup -----------------
+import tempfile, subprocess, threading, os
+
+
 def do_popup_windows(text, title="Aviso", type_="info"):
     try:
         safe_text = text.replace('"', "'")
         safe_title = title.replace('"', "'")
 
-        # Map type to MessageBox icons
         type_map = {"info": "Information", "warning": "Warning", "error": "Error"}
         icon_type = type_map.get(type_.lower(), "Information")
 
-        # PowerShell script with Topmost
         ps_script = f"""
 Add-Type -AssemblyName PresentationFramework
-[System.Windows.MessageBox]::Show("{safe_text}", "{safe_title}", "OK", "{icon_type}", "DefaultButton1", "None")
+# Create topmost invisible window as owner
+$w = New-Object System.Windows.Window
+$w.Topmost = $true
+$w.Visibility = "Hidden"
+[System.Windows.MessageBox]::Show($w, "{safe_text}", "{safe_title}", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::{icon_type})
 """
 
-        # Save to temp file
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".ps1", mode="w", encoding="utf-8")
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False, suffix=".ps1", mode="w", encoding="utf-8"
+        )
         tmp.write(ps_script)
         tmp.close()
 
-        # Run PowerShell and delete temp file after it closes
         def run_and_delete():
             subprocess.run(
                 ["powershell", "-ExecutionPolicy", "Bypass", "-File", tmp.name],
