@@ -57,7 +57,7 @@ import threading
 import os
 
 
-def do_popup_windows_vbs(text, title="Aviso", type_="info"):
+def do_popup_windows(text, title="Aviso", type_="info"):
     """
     Muestra un popup topmost en Windows usando VBScript.
     type_ puede ser: "info", "warning", "error"
