@@ -14,6 +14,7 @@ import threading, socket, json, time
 import os
 import base64
 
+CHUNK_SIZE = 1024 * 1024
 TCP_PORT = 56700
 UDP_BROADCAST_PORT = 56701
 SHARED_TOKEN = "gmhMWfvT0P4RPKgrpYMtYBViXPg8.Tj57Gf0UQJzDlqOQGa0pO5o-Ptj9tYGUFZlQGRuHsX4g4O0Gj8Mjç+O2BKiF3KXZwzKXdRy2rHd€@9zJwGEyOiO2yGP51KoKdDHIOfSCE"
@@ -37,6 +38,126 @@ def udp_listener():
                 pass
         except Exception:
             pass
+
+
+def open_file_transfer(self):
+    if not self.current_agent_ip:
+        messagebox.showwarning("Atención", "Selecciona un nodo primero")
+        return
+
+    win = tk.Toplevel()
+    win.title(f"Transferencias de archivos - {self.current_agent_ip}")
+    win.geometry("900x500")
+
+    # ----------------- Local Tree -----------------
+    local_frame = tk.Frame(win)
+    local_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+    tk.Label(local_frame, text="PC Local").pack()
+    self.local_listbox = tk.Listbox(local_frame)
+    self.local_listbox.pack(fill="both", expand=True)
+    self.local_path = os.getcwd()
+    self.refresh_local_list()
+
+    # ----------------- Remote Tree -----------------
+    remote_frame = tk.Frame(win)
+    remote_frame.pack(side="right", fill="both", expand=True, padx=5, pady=5)
+    tk.Label(remote_frame, text="PC Remota").pack()
+    self.remote_listbox = tk.Listbox(remote_frame)
+    self.remote_listbox.pack(fill="both", expand=True)
+    self.remote_path = "C:\\"
+    self.refresh_remote_list()
+
+    # ----------------- Buttons -----------------
+    btn_frame = tk.Frame(win)
+    btn_frame.pack(side="bottom", fill="x")
+    tk.Button(btn_frame, text="Atrás Local", command=self.back_local).pack(side="left")
+    tk.Button(btn_frame, text="Atrás Remoto", command=self.back_remote).pack(
+        side="left"
+    )
+    tk.Button(btn_frame, text="Transferir →", command=self.transfer_to_remote).pack(
+        side="left"
+    )
+    tk.Button(btn_frame, text="Transferir ←", command=self.transfer_to_local).pack(
+        side="left"
+    )
+
+
+# ---------- Helpers ----------
+def refresh_local_list(self):
+    self.local_listbox.delete(0, tk.END)
+    try:
+        for f in os.listdir(self.local_path):
+            self.local_listbox.insert(tk.END, f)
+    except PermissionError:
+        pass
+
+
+def refresh_remote_list(self):
+    self.remote_listbox.delete(0, tk.END)
+    payload = {"cmd": "listdir", "args": {"path": self.remote_path}}
+    res = self.send_cmd(self.current_agent_ip, payload)
+    if res.get("ok"):
+        self.remote_items = res["data"]["items"]
+        for item in self.remote_items:
+            name = item["name"] + ("/" if item["is_dir"] else "")
+            self.remote_listbox.insert(tk.END, name)
+
+
+def back_local(self):
+    self.local_path = os.path.dirname(self.local_path)
+    self.refresh_local_list()
+
+
+def back_remote(self):
+    parent = os.path.dirname(self.remote_path.rstrip("\\"))
+    self.remote_path = parent if parent else "C:\\"
+    self.refresh_remote_list()
+
+
+def transfer_to_remote(self):
+    sel = self.local_listbox.curselection()
+    if not sel:
+        return
+    filename = self.local_listbox.get(sel[0])
+    src_path = os.path.join(self.local_path, filename)
+    if os.path.isdir(src_path):
+        messagebox.showwarning("Aviso", "Transferencia de carpetas no implementada")
+        return
+    with open(src_path, "rb") as f:
+        content = base64.b64encode(f.read()).decode()
+    payload = {
+        "cmd": "putfile",
+        "args": {"path": os.path.join(self.remote_path, filename), "content": content},
+    }
+    res = self.send_cmd(self.current_agent_ip, payload)
+    if res.get("ok"):
+        messagebox.showinfo("Éxito", "Archivo transferido")
+        self.refresh_remote_list()
+    else:
+        messagebox.showerror("Error", res.get("msg"))
+
+
+def transfer_to_local(self):
+    sel = self.remote_listbox.curselection()
+    if not sel:
+        return
+    item = self.remote_items[sel[0]]
+    if item["is_dir"]:
+        messagebox.showwarning("Aviso", "Transferencia de carpetas no implementada")
+        return
+    payload = {
+        "cmd": "getfile",
+        "args": {"path": os.path.join(self.remote_path, item["name"])},
+    }
+    res = self.send_cmd(self.current_agent_ip, payload)
+    if res.get("ok"):
+        content = base64.b64decode(res["data"])
+        with open(os.path.join(self.local_path, item["name"]), "wb") as f:
+            f.write(content)
+        messagebox.showinfo("Éxito", "Archivo transferido")
+        self.refresh_local_list()
+    else:
+        messagebox.showerror("Error", res.get("msg"))
 
 
 class AdminApp:
@@ -82,10 +203,10 @@ class AdminApp:
         self.btn_popup.pack(side="left", padx=6)
         self.btn_openx = tk.Button(btns, text="Abrir X", command=self.send_openx)
         self.btn_openx.pack(side="left", padx=6)
-        self.btn_transfer = tk.Button(
+        self.btn_filetransfer = tk.Button(
             btns, text="Transferencias de archivos", command=self.open_file_transfer
         )
-        self.btn_transfer.pack(side="left", padx=6)
+        self.btn_filetransfer.pack(side="left", padx=6)
         tk.Button(
             self.frame_detalle, text="Desconectar / Volver", command=self.back_to_list
         ).pack(pady=12)
@@ -215,71 +336,32 @@ class AdminApp:
         else:
             messagebox.showerror("Error", res.get("msg", "Fallo al ejecutar openx"))
 
-    def populate_local_tree(self, tree, path):
+    def populate_local_tree(self, tree, path, parent=""):
         tree.delete(*tree.get_children())
         for f in os.listdir(path):
             full = os.path.join(path, f)
             is_dir = os.path.isdir(full)
-            tree.insert("", "end", text=f, values=(full,), open=False)
+            iid = tree.insert(parent, "end", text=f, values=(full,), open=False)
+            if is_dir:
+                # Add a dummy child to allow expansion
+                tree.insert(iid, "end", text="dummy")
 
-    def populate_remote_tree(self, tree, path, ip):
-        tree.delete(*tree.get_children())
+    def populate_remote_tree(self, tree, path, ip, parent=""):
+        tree.delete(*tree.get_children()) if parent == "" else None
         payload = {"cmd": "listdir", "args": {"path": path}}
         res = self.send_cmd(ip, payload)
         if res.get("ok"):
             for entry in res["entries"]:
-                tree.insert(
-                    "",
+                full_path = os.path.join(path, entry["name"])
+                iid = tree.insert(
+                    parent,
                     "end",
                     text=entry["name"],
-                    values=(os.path.join(path, entry["name"]),),
+                    values=(full_path,),
                     open=False,
                 )
-
-    def open_file_transfer(self):
-        if not self.current_agent_ip:
-            messagebox.showwarning("Atención", "No hay un nodo seleccionado.")
-            return
-
-        win = tk.Toplevel(self.root)
-        win.title("Transferencias de archivos")
-        win.geometry("800x400")
-
-        # Frames
-        local_frame = tk.Frame(win)
-        remote_frame = tk.Frame(win)
-        local_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
-        remote_frame.pack(side="right", fill="both", expand=True, padx=5, pady=5)
-
-        tk.Label(local_frame, text="PC Local").pack()
-        tk.Label(remote_frame, text="Agente Remoto").pack()
-
-        # Local tree
-        local_tree = ttk.Treeview(local_frame)
-        local_tree.pack(fill="both", expand=True)
-        self.populate_local_tree(local_tree, "C:\\")
-
-        # Remote tree
-        remote_tree = ttk.Treeview(remote_frame)
-        remote_tree.pack(fill="both", expand=True)
-        self.populate_remote_tree(remote_tree, "C:\\", self.current_agent_ip)
-
-        # Drag & drop: double click to send from local -> remote
-        def send_to_remote(event):
-            item = local_tree.selection()[0]
-            path = local_tree.item(item, "values")[0]
-            if os.path.isfile(path):
-                with open(path, "rb") as f:
-                    data = f.read()
-                data_b64 = base64.b64encode(data).decode()
-                payload = {"cmd": "putfile", "args": {"path": path, "data": data_b64}}
-                res = self.send_cmd(self.current_agent_ip, payload)
-                if res.get("ok"):
-                    messagebox.showinfo("Éxito", f"Archivo {path} enviado al agente")
-                else:
-                    messagebox.showerror("Error", res.get("msg", "Fallo"))
-
-        local_tree.bind("<Double-1>", send_to_remote)
+                if entry["is_dir"]:
+                    tree.insert(iid, "end", text="dummy")  # allow expansion
 
     # ----------------- Shell window -----------------
     def open_shell(self):

