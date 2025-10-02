@@ -53,33 +53,31 @@ def do_popup_windows(text, title="Aviso", type_="info"):
         safe_text = text.replace('"', "'")
         safe_title = title.replace('"', "'")
 
-        # Mapear tipo a iconos de MessageBox
+        # Map type to MessageBox icons
         type_map = {"info": "Information", "warning": "Warning", "error": "Error"}
         icon_type = type_map.get(type_.lower(), "Information")
 
-        # Crear script de PowerShell
+        # PowerShell script with Topmost
         ps_script = f"""
 Add-Type -AssemblyName PresentationFramework
-[System.Windows.MessageBox]::Show("{safe_text}", "{safe_title}", "OK", "{icon_type}")
+[System.Windows.MessageBox]::Show("{safe_text}", "{safe_title}", "OK", "{icon_type}", "DefaultButton1", "None")
 """
 
-        # Guardar script temporal
-        tmp = tempfile.NamedTemporaryFile(
-            delete=False, suffix=".ps1", mode="w", encoding="utf-8"
-        )
+        # Save to temp file
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".ps1", mode="w", encoding="utf-8")
         tmp.write(ps_script)
         tmp.close()
 
-        # Lanzar sin consola
-        subprocess.Popen(
-            ["powershell", "-ExecutionPolicy", "Bypass", "-File", tmp.name],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+        # Run PowerShell and delete temp file after it closes
+        def run_and_delete():
+            subprocess.run(
+                ["powershell", "-ExecutionPolicy", "Bypass", "-File", tmp.name],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if os.path.exists(tmp.name):
+                os.unlink(tmp.name)
 
-        # Borrar el archivo después de 15 segundos
-        threading.Timer(
-            15, lambda: os.unlink(tmp.name) if os.path.exists(tmp.name) else None
-        ).start()
+        threading.Thread(target=run_and_delete, daemon=True).start()
         return True, "Popup lanzado correctamente"
     except Exception as e:
         try:
